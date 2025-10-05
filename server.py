@@ -1,21 +1,36 @@
-from fastapi import FastAPI, UploadFile, File
-import openai
-import tempfile
+from flask import Flask, request, jsonify
+import requests
 
-app = FastAPI()
+app = Flask(__name__)
 
-@app.post("/recognize")
-async def recognize(file: UploadFile = File(...)):
-    # временный файл
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-        tmp.write(await file.read())
-        tmp_path = tmp.name
+# Поставьте свой API-ключ OpenAI
+OPENAI_API_KEY = "YOUR_OPENAI_API_KEY"
 
-    # отправляем в OpenAI API
-    with open(tmp_path, "rb") as audio_file:
-        transcript = openai.audio.transcriptions.create(
-            model="gpt-4o-mini-transcribe",  # дешево и быстро
-            file=audio_file
-        )
+@app.route("/recognize", methods=["POST"])
+def recognize():
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
 
-    return {"text": transcript.text}
+    audio_file = request.files["file"]
+
+    # Отправляем на OpenAI Whisper
+    response = requests.post(
+        "https://api.openai.com/v1/audio/transcriptions",
+        headers={
+            "Authorization": f"Bearer {OPENAI_API_KEY}"
+        },
+        files={
+            "file": (audio_file.filename, audio_file.stream, "audio/wav")
+        },
+        data={
+            "model": "whisper-1"
+        }
+    )
+
+    if response.status_code != 200:
+        return jsonify({"error": "Failed to recognize", "details": response.text}), 500
+
+    return jsonify(response.json())
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
